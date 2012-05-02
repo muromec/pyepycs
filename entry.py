@@ -5,9 +5,11 @@ import random
 import socket
 import struct
 from epycs.rc4 import RC4
+import d41
 
 class ChatSession(object):
     INIT_PACKED = "\x00\x01\x00\x00\x00\x01\x00\x00\x00\x03"
+    INIT_UNK = "\x75\xAA\xBB\xCC\x38\x36\xAA\xBB\x01\xCC\xA9\x02\x28\xDD\xA5\x43\xA5\x15\xA9\xEF\x08"
     def __init__(self, addr):
         self.rnd = random.randint(0, 0x10000)
         self.seq = random.randint(0, 0x10000)
@@ -36,6 +38,21 @@ class ChatSession(object):
 
         logging.info('handshake passed with %r' % (self.addr,))
 
+    def check_name(self, name):
+        # send 6 blobs in single command
+        # TODO: move package assemble into d41
+
+        data = d41.format_41_command(6, 0x40DD, 0x43)
+
+        # here are blobs
+        data += d41.format_blob(0, 3, 0x259F) # local session id
+        data += d41.format_blob(4, 1, self.INIT_UNK)
+        data += d41.format_blob(1, 9, (0xF7BB5566, 0xDBDBCE66))
+        data += d41.format_blob(0, 0x1B, None) # flag
+        data += d41.format_blob(3, 0, unicode(name))
+        data += d41.format_blob(0, 0x18, 1) # flag
+
+        print data.encode('hex')
 
     def send(self, data):
         self.con.sendall(data)
@@ -92,6 +109,7 @@ def main():
 
     chat = ChatSession(addr)
     chat.connect()
+    chat.check_name(remote_name)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
