@@ -1,5 +1,57 @@
 import sys
 from configobj import ConfigObj
+import logging
+import random
+import socket
+import struct
+from epycs.rc4 import RC4
+
+class ChatSession(object):
+    INIT_PACKED = "\x00\x01\x00\x00\x00\x01\x00\x00\x00\x03"
+    def __init__(self, addr):
+        self.rnd = random.randint(0, 0x10000)
+        self.seq = random.randint(0, 0x10000)
+        self.addr = addr
+        self.local_rc4 = RC4(self.rnd)
+
+    def connect(self):
+        self.con = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.con.connect(self.addr)
+        initial_data = self.local_rc4.crypt(self.INIT_PACKED)
+
+        self.send(struct.pack('!L', self.rnd) + initial_data)
+        response = self.recv()
+        if len(response) < 14:
+            raise IOError('Too short handshake packed')
+
+        [self.remote_iv] = struct.unpack('!L', response[:4])
+        self.remote_rc4 = RC4(self.remote_iv)
+        handshake_clear = self.remote_rc4.test(response[4:14])
+
+        self.check_handshake(handshake_clear)
+
+        next_size = self.remote_rc4.crypt(response[14:])
+
+        self.check_handshake_2(next_size)
+
+        logging.info('handshake passed with %r' % (self.addr,))
+
+
+    def send(self, data):
+        self.con.sendall(data)
+
+    def recv(self):
+        data = self.con.recv(4096)
+        return data
+
+    def check_handshake(self, data):
+        pass
+
+    def check_handshake_2(self, data):
+        if data[1] == '\x03':
+            return
+
+        raise ValueError('RC4 tcp flow handshake failed step 2')
 
 def load(fname='epycs.conf'):
     config = ConfigObj(fname)
@@ -34,9 +86,13 @@ def main():
 
     msg = sys.argv[3] if len(sys.argv) > 3 else 'Wake up, Neo ^_^'
 
-    print 'about to send %r to user %s at addr %r' % (msg, remote_name, addr)
+    logging.info('about to send %r to user %s at addr %r' % (msg, remote_name, addr))
 
     load()
 
+    chat = ChatSession(addr)
+    chat.connect()
+
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO, stream=sys.stderr)
     main()
