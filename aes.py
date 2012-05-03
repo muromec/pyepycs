@@ -24,4 +24,17 @@ def crypt(data, blk_seq=0, sid=0):
         seq += 1
         pos += 16
 
-    return struct.pack('<%dL' % len(ret), *ret)
+    str_ret = struct.pack('<%dL' % len(ret), *ret)
+
+    if sz > pos:
+        pt_data = struct.pack('<4L', sid, 0, sid, seq)
+        crypted = aes.crypt(pt_data)
+        ct = struct.unpack('!16B', crypted)
+        pt = struct.unpack('<%dB' % (sz-pos), data[pos:])
+        ret =[
+            ct[x^3] ^ pt[x]
+            for x in range(sz - pos)
+        ]
+        str_ret += struct.pack('<%dB' % len(ret), *ret)
+
+    return str_ret
