@@ -6,6 +6,7 @@ import socket
 import struct
 from epycs.rc4 import RC4
 import d41
+from aes import crypt as aes_crypt
 
 class ChatSession(object):
     INIT_PACKED = "\x00\x01\x00\x00\x00\x01\x00\x00\x00\x03"
@@ -21,13 +22,14 @@ class ChatSession(object):
         self.con.connect(self.addr)
         initial_data = self.local_rc4.crypt(self.INIT_PACKED)
 
-        self.send(struct.pack('!L', self.rnd) + initial_data)
+        self.send(struct.pack('!L', self.rnd) + initial_data, rc4=False, aes=False)
         response = self.recv()
         if len(response) < 14:
             raise IOError('Too short handshake packed')
 
         [self.remote_iv] = struct.unpack('!L', response[:4])
         self.remote_rc4 = RC4(self.remote_iv)
+        logging.info("remote RC4 IV: %x" % self.remote_iv)
         handshake_clear = self.remote_rc4.test(response[4:14])
 
         self.check_handshake(handshake_clear)
@@ -52,13 +54,41 @@ class ChatSession(object):
         data += d41.format_blob(3, 0, unicode(name))
         data += d41.format_blob(0, 0x18, 1) # flag
 
-        print data.encode('hex')
+        # TODO: add CRC
 
-    def send(self, data):
+        self.send(data)
+
+        response = self.recv()
+        if not response:
+            raise IOError("Connection stalled")
+
+        response = self.remote_rc4.crypt(response)
+
+        ct, n = d41.decode_7bit(response[:10])
+        clear = aes_crypt(response[5:])
+        print d41.unpack_41_command(clear)
+
+    def send(self, data, rc4=True, aes=True):
+
+        if aes:
+            data = aes_crypt(data)
+        if rc4:
+            data = self.local_rc4.crypt(data)
         self.con.sendall(data)
 
     def recv(self):
-        data = self.con.recv(4096)
+        data = ''
+
+        while True:
+            try:
+                self.con.settimeout(0.3)
+                chunk = self.con.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+            except socket.timeout:
+                break
+
         return data
 
     def check_handshake(self, data):
