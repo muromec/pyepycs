@@ -7,6 +7,8 @@ import struct
 from epycs.rc4 import RC4
 import d41
 from aes import crypt as aes_crypt
+from scrc import calculate as calc_scrc
+from scrc import calculate32 as calc_scrc32
 
 class ChatSession(object):
     INIT_PACKED = "\x00\x01\x00\x00\x00\x01\x00\x00\x00\x03"
@@ -20,7 +22,7 @@ class ChatSession(object):
     def connect(self):
         self.con = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.con.connect(self.addr)
-        initial_data = self.local_rc4.crypt(self.INIT_PACKED)
+        initial_data = self.local_rc4.test(self.INIT_PACKED)
 
         self.send(struct.pack('!L', self.rnd) + initial_data, rc4=False, aes=False)
         response = self.recv()
@@ -53,6 +55,7 @@ class ChatSession(object):
         data += d41.format_blob(0, 0x1B, None) # flag
         data += d41.format_blob(3, 0, unicode(name))
         data += d41.format_blob(0, 0x18, 1) # flag
+        data += calc_scrc(data)
 
         # TODO: add CRC
 
@@ -69,11 +72,32 @@ class ChatSession(object):
         print d41.unpack_41_command(clear)
 
     def send(self, data, rc4=True, aes=True):
+        logging.info("raw %s [%x]" % (data.encode('hex'), len(data)))
 
         if aes:
             data = aes_crypt(data)
+            data += struct.pack('<H', calc_scrc32(data))
+            logging.info("encrypted %s [%x]" % (data.encode('hex'), len(data)))
+
+        if aes and True: # first byte correction
+            sz = len(data) + 3
+            sz *= 2
+            sz += 1
+            header = d41.encode_to_7bit(sz)
+            header.append(5)
+            fmt = '<%dB' % len(header)
+            str_header = struct.pack(fmt, *header)
+            str_header += struct.pack('>H', calc_scrc32(data))
+            data = str_header + data
+
+            logging.info("with header %s [%x]" % (data.encode('hex'), len(data)))
+
         if rc4:
             data = self.local_rc4.crypt(data)
+            logging.info("rc4 %s [%x]" % (data.encode('hex'), len(data)))
+
+
+        logging.info("send %s [%x]" % (data.encode('hex'), len(data)))
         self.con.sendall(data)
 
     def recv(self):
