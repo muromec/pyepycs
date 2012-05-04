@@ -50,8 +50,7 @@ def unpack_41_command(data):
             ret[idx] = (typ, val)
 
         elif typ == 1: # 64 bit num
-            a,b = struct.unpack_from('<II', data, blob_pos)
-            val = a<<32 | b
+            [val] = struct.unpack_from('<Q', data, blob_pos)
             blob_pos += 8
             ret[idx] = (typ, val)
 
@@ -134,7 +133,12 @@ class Packet(object):
     def encode(self, sid, cmd, blobs):
         data = format_41_command(len(blobs), sid, cmd)
 
-        assert hasattr(blobs, 'next') or hasattr(blobs, 'iteritems'), "Blobs should support iteration!"
+        assert (
+                hasattr(blobs, 'next')
+                or isinstance(blobs, list)
+                or hasattr(blobs, 'iteritems')
+        ), "Blobs should support iteration!"
+
         if isinstance(blobs, dict):
             kv = blobs.iteritems()
         else:

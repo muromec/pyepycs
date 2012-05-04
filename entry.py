@@ -27,6 +27,7 @@ class ChatSession(object):
         self.local_rc4 = RC4(self.rnd)
         self.cred_188 = cred_188
         self.aes_seq = 0
+        self.aes_seq_r = 0
 
     def connect(self):
         self.con = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -117,35 +118,32 @@ class ChatSession(object):
 
     def send_nonce(self,):
 
-        cred = self.cred_188.raw
-
-        print 'cred188', cred.encode('hex')
-        cr = self.challenge_response
-        print 'challenge', cr.encode('hex')
-
-
-        nonce = self.local_nonce
-        print 'local nonce', nonce.encode('hex')
-
-        print 'uic', unsp.LOCAL_UIC.encode('hex')
-
-        out = d41.Packet(0x44EF, 0x45, [
-            (0x16, 1),
-            (0x1A, 1),
-            (2, 0x5F359B29),
-            (5, cred),
-            (0xD, 2),
-            (0xA, cr),
-            (0x19, 1),
-            (6, nonce),
-            (0x11, unsp.LOCAL_UIC),
-            (0x14, 0),
-        ])
+        out = d41.Packet(0x44EF, 0x45, {
+            0x16: 1,
+            0x1A: 1,
+            2: 0x5F359B29,
+            5: self.cred_188.raw,
+            0xD: 2,
+            0xA: self.challenge_response,
+            0x19: 1,
+            6: self.local_nonce,
+            0x11: unsp.LOCAL_UIC,
+            0x14: 0,
+        })
         self.send(out.raw)
 
         data = self.recv()
         if not data:
             raise IOError('Empty response in nonce')
+
+        packet = d41.Packet(raw=data)
+        typ, remote_nonce = packet.blobs.get(6)
+        clear_remote_nonce = self.cred_188.crypt(remote_nonce)
+        if clear_remote_nonce[0] == '\x01' and \
+                clear_remote_nonce[1:16] == clear_remote_nonce[17:32]:
+                    logging.info("Remote nonce check passed")
+        else:
+            raise IOError("Wrong nonce")
 
 
 
@@ -226,7 +224,8 @@ class ChatSession(object):
             # oops, losing first 5 bytes
             ct, n = d41.decode_7bit(data[:5])
             # not sure is 5 is fixed offset due to 7bit size encoding
-            data = aes_crypt(data[5:])
+            data = aes_crypt(data[5:], self.aes_seq_r)
+            self.aes_seq_r += 1
 
         return data
 
@@ -249,8 +248,6 @@ def load(fname='epycs.conf'):
             'email',
             'version',
             'cred',
-            'cred_p',
-            'cred_q',
     ]
 
     for key in KEYS:
