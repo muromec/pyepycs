@@ -10,18 +10,21 @@ import d41
 import rsa
 import keys
 import hashlib
+from cred import Cred
 from aes import crypt as aes_crypt
 from scrc import calculate32 as calc_scrc32
+import unsp
 
 class ChatSession(object):
     INIT_PACKED = "\x00\x01\x00\x00\x00\x01\x00\x00\x00\x03"
-    INIT_UNK = "\x75\xAA\xBB\xCC\x38\x36\xAA\xBB\x01\xCC\xA9\x02\x28\xDD\xA5\x43\xA5\x15\xA9\xEF\x08"
-    def __init__(self, addr):
+    INIT_UNK = unsp.INIT_UNK
+    def __init__(self, addr, cred_188):
         self.rnd = random.randint(0, 0x10000)
         self.seq = random.randint(0, 0x10000)
         self.local_sid = int(time.time()) & 0x3FFF
         self.addr = addr
         self.local_rc4 = RC4(self.rnd)
+        self.cred_188 = cred_188
 
     def connect(self):
         self.con = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -70,6 +73,23 @@ class ChatSession(object):
         typ, remote_nonce = packet.blobs.get(9, (None,None))
         nonce_hash = hashlib.sha1(struct.pack('<Q', remote_nonce))
         print nonce_hash.hexdigest()
+
+    def send_nonce(self,):
+
+        out = d41.Packet(0x44EF, 0x45, {
+            0x16: 1,
+            0x1A: 1,
+            2: 0x5F359B29,
+            5: self.cred_188.raw,
+            0xD: 2,
+            0xA: self.channelge_response,
+            0x19: 1,
+            6: self.local_nonce,
+            0x11: self.local_uic,
+            0x14: None,
+        })
+        self.send(out.raw)
+
 
 
     def extract_key(self, packet):
@@ -172,6 +192,8 @@ def load(fname='epycs.conf'):
             print 'oops %s missing from config' % key
             sys.exit(1)
 
+    return config
+
 def main():
     if len(sys.argv) < 3:
         print 'Specify peer login and address'
@@ -188,11 +210,16 @@ def main():
 
     logging.info('about to send %r to user %s at addr %r' % (msg, remote_name, addr))
 
-    load()
+    config = load()
 
-    chat = ChatSession(addr)
+    cred_188 = Cred(config)
+    logging.debug("compuped cred_188 %s" % cred_188.raw.encode('hex'))
+
+    chat = ChatSession(addr, cred_188)
+
     chat.connect()
     chat.check_name(remote_name)
+    chat.send_nonce()
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
