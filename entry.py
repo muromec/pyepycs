@@ -92,10 +92,18 @@ class ChatSession(object):
     @property
     def local_nonce(self):
         if not hasattr(self, '_local_nonce'):
-            data = rsa.randnum.read_random_bits(0x80 * 8)
+            #data = rsa.randnum.read_random_bits(0x80 * 8)
+            data = unsp.LOCAL_NONCE
             self._local_nonce = '\x01' + data[1:]
 
-        return self.cred_188.crypt(self._local_nonce)
+        return self.remote_rsa_crypt(self._local_nonce)
+
+    def remote_rsa_crypt(self, data):
+        user = rsa.transform.bytes2int(self.remote_rsa)
+        data = rsa.transform.bytes2int(data)
+        iret = pow(data, 65537, user)
+        return rsa.transform.int2bytes(iret)
+
 
     @property
     def aes_key(self):
@@ -142,10 +150,11 @@ class ChatSession(object):
         key_start += 2
         key = cred[key_start:key_start+0x80]
         logging.info("extraced user key %s" % key.encode('hex'))
+        self.remote_rsa = key
 
 
     def send(self, data, rc4=True, aes=True):
-        logging.info("raw %s [%x]" % (data.encode('hex'), len(data)))
+        logging.debug("raw %s [%x]" % (data.encode('hex'), len(data)))
 
         if aes:
             data = aes_crypt(data, self.aes_seq)
