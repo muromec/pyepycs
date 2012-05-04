@@ -72,14 +72,11 @@ class ChatSession(object):
         self.extract_key(packet)
 
         typ, challenge = packet.blobs.get(0xa)
-        for idx, (typ, val) in packet.blobs.iteritems():
-            if typ == 4:
-                print hex(idx), val.encode('hex')
         typ, self.remote_nonce = packet.blobs.get(9, (None,None))
 
     @property
     def challenge_response(self):
-        nonce = struct.pack('<Q', self.remote_nonce)
+        nonce = struct.pack('>Q', self.remote_nonce)
         nonce += '\x01'
 
         nonce_hash = hashlib.sha1(nonce)

@@ -50,7 +50,8 @@ def unpack_41_command(data):
             ret[idx] = (typ, val)
 
         elif typ == 1: # 64 bit num
-            [val] = struct.unpack_from('!Q', data, blob_pos)
+            a,b = struct.unpack_from('<II', data, blob_pos)
+            val = a<<32 | b
             blob_pos += 8
             ret[idx] = (typ, val)
 
