@@ -137,14 +137,54 @@ class ChatSession(object):
             raise IOError('Empty response in nonce')
 
         packet = d41.Packet(raw=data)
+        self.extract_aes_key(packet)
+
+    def join(self, me, remote):
+        random_str = u'4fea66013cdd0000'
+        chatstring = u"#%s/$%s;%s" % (
+                me,
+                remote,
+                random_str,
+        )
+        out = d41.Packet(0x6406, 0x6D, {
+            1: 0x55819F87,
+            3: 0,
+            4: {
+                1: 0xD,
+                2: unicode(chatstring),
+                0x1c: 1,
+                0x1D: 1,
+            },
+            7: 5,
+        })
+        self.send(out.raw)
+
+        out2 = d41.Packet(0x872F, 0x43, {
+            0: 0x2a,
+            1: u"", # wtf? chat subject?
+            2: 0,
+        })
+        self.send(out2.raw)
+
+
+    def extract_aes_key(self, packet):
         typ, remote_nonce = packet.blobs.get(6)
         clear_remote_nonce = self.cred_188.crypt(remote_nonce)
+
+        # XXX:
+        # pretty dumb check, no warranty here,
+        # maby should be wiped out as we dont`t know nonce
+        # format
         if clear_remote_nonce[0] == '\x01' and \
                 clear_remote_nonce[1:16] == clear_remote_nonce[17:32]:
                     logging.info("Remote nonce check passed")
         else:
             raise IOError("Wrong nonce")
 
+        data = '\x00\x00\x00\x00' + clear_remote_nonce
+        assert len(data) == 0x84
+
+        self.remote_aes_key = hashlib.sha1(data).digest()[:0x10]
 
 
     def extract_key(self, packet):
@@ -283,6 +323,7 @@ def main():
     chat.connect()
     chat.check_name(remote_name)
     chat.send_nonce()
+    chat.join(config['login'], remote_name)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
