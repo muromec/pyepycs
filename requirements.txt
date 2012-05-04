@@ -1,3 +1,4 @@
 configobj
+rsa
 git+https://github.com/muromec/pyepycs.rc4.git
 git+https://github.com/muromec/pyepycs.aes.git
