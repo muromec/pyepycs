@@ -27,7 +27,7 @@ class ChatSession(object):
         initial_data = self.local_rc4.test(self.INIT_PACKED)
 
         self.send(struct.pack('!L', self.rnd) + initial_data, rc4=False, aes=False)
-        response = self.recv()
+        response = self.recv(rc4=False, aes=False)
         if len(response) < 14:
             raise IOError('Too short handshake packed')
 
@@ -62,12 +62,7 @@ class ChatSession(object):
         if not response:
             raise IOError("Connection stalled")
 
-        response = self.remote_rc4.crypt(response)
-
-        ct, n = d41.decode_7bit(response[:10])
-        clear = aes_crypt(response[5:])
-
-        packet = d41.Packet(raw=clear)
+        packet = d41.Packet(raw=response)
 
         for idx, (typ, val) in packet.blobs.items():
             print "INDEX %x, typ %x value %r" % (idx, typ, val)
@@ -105,7 +100,7 @@ class ChatSession(object):
         logging.info("send %s [%x]" % (data.encode('hex'), len(data)))
         self.con.sendall(data)
 
-    def recv(self):
+    def recv(self, rc4=True, aes=True):
         data = ''
         self.con.settimeout(2)
 
@@ -118,6 +113,16 @@ class ChatSession(object):
                 data += chunk
             except socket.timeout:
                 break
+
+        if rc4:
+            data = self.remote_rc4.crypt(data)
+
+        if aes:
+            # TODO: check size and crc from header
+            # oops, losing first 5 bytes
+            ct, n = d41.decode_7bit(data[:5])
+            # not sure is 5 is fixed offset due to 7bit size encoding
+            data = aes_crypt(data[5:])
 
         return data
 
