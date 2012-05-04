@@ -64,7 +64,7 @@ def unpack_41_command(data):
 
 
     # TODO: last 4 bytes CRC
-    return ret
+    return session, cmd, ret
 
 
 TYPES = {
@@ -118,14 +118,17 @@ def format_blob(idx, data):
         return struct.pack(fmt, *ret) + struct.pack(fmt2, *data)
 
 class Packet(object):
-    def __init__(self, sid, cmd, blobs=(), raw=None):
+    def __init__(self, sid=None, cmd=None, blobs=(), raw=None):
         if raw is not None:
+            self.raw = raw
             self.decode(raw)
         elif sid and cmd:
+            self.sid, self.cmd, self.blobs = sid, cmd, blobs
             self.encode(sid, cmd, blobs)
 
     def decode(self, raw):
-        pass
+        # TODO: split into unpack_command and unpack_blobs
+        self.sid, self.cmd, self.blobs = unpack_41_command(raw)
 
     def encode(self, sid, cmd, blobs):
         data = format_41_command(len(blobs), sid, cmd)

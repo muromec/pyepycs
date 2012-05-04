@@ -66,16 +66,13 @@ class ChatSession(object):
 
         ct, n = d41.decode_7bit(response[:10])
         clear = aes_crypt(response[5:])
-        print 'got len %d'% len(clear)
-        print clear.encode('hex')
 
-        print 'got packet typ 41:'
-        packet = d41.unpack_41_command(clear)
+        packet = d41.Packet(raw=clear)
 
-        for idx, (typ, val) in packet.items():
+        for idx, (typ, val) in packet.blobs.items():
             print "INDEX %x, typ %x value %r" % (idx, typ, val)
 
-        typ, val = packet.get(1, (None,None))
+        typ, val = packet.blobs.get(1, (None,None))
 
 
 
