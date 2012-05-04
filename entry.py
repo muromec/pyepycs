@@ -22,6 +22,7 @@ class ChatSession(object):
         self.rnd = random.randint(0, 0x10000)
         self.seq = random.randint(0, 0x10000)
         self.local_sid = int(time.time()) & 0x3FFF
+        self.remote_sid = 0
         self.addr = addr
         self.local_rc4 = RC4(self.rnd)
         self.cred_188 = cred_188
@@ -73,6 +74,7 @@ class ChatSession(object):
 
         typ, challenge = packet.blobs.get(0xa)
         typ, self.remote_nonce = packet.blobs.get(9, (None,None))
+        typ, self.remote_sid = packet.blobs.get(3)
 
     @property
     def challenge_response(self):
@@ -115,18 +117,30 @@ class ChatSession(object):
 
     def send_nonce(self,):
 
-        out = d41.Packet(0x44EF, 0x45, {
-            0x16: 1,
-            0x1A: 1,
-            2: 0x5F359B29,
-            5: self.cred_188.raw,
-            0xD: 2,
-            0xA: self.challenge_response,
-            0x19: 1,
-            6: self.local_nonce,
-            0x11: unsp.LOCAL_UIC,
-            0x14: 0,
-        })
+        cred = self.cred_188.raw
+
+        print 'cred188', cred.encode('hex')
+        cr = self.challenge_response
+        print 'challenge', cr.encode('hex')
+
+
+        nonce = self.local_nonce
+        print 'local nonce', nonce.encode('hex')
+
+        print 'uic', unsp.LOCAL_UIC.encode('hex')
+
+        out = d41.Packet(0x44EF, 0x45, [
+            (0x16, 1),
+            (0x1A, 1),
+            (2, 0x5F359B29),
+            (5, cred),
+            (0xD, 2),
+            (0xA, cr),
+            (0x19, 1),
+            (6, nonce),
+            (0x11, unsp.LOCAL_UIC),
+            (0x14, 0),
+        ])
         self.send(out.raw)
 
         data = self.recv()
@@ -154,13 +168,16 @@ class ChatSession(object):
 
 
     def send(self, data, rc4=True, aes=True):
-        logging.debug("raw %s [%x]" % (data.encode('hex'), len(data)))
+        logging.info("raw %s [%x]" % (data.encode('hex'), len(data)))
 
         if aes:
             data = aes_crypt(data, self.aes_seq)
+            crc = calc_scrc32(data)
+            data += struct.pack('<H', crc ^ self.aes_seq)
+
             self.aes_seq += 1
-            data += struct.pack('<H', calc_scrc32(data))
             logging.info("encrypted %s [%x]" % (data.encode('hex'), len(data)))
+
 
         if aes and True: # first byte correction
             sz = len(data) + 3
@@ -170,7 +187,8 @@ class ChatSession(object):
             header.append(5)
             fmt = '<%dB' % len(header)
             str_header = struct.pack(fmt, *header)
-            str_header += struct.pack('>H', calc_scrc32(data))
+            crc = calc_scrc32(data)
+            str_header += struct.pack('>H', crc ^ (self.remote_sid<<1))
             data = str_header + data
 
             logging.info("with header %s [%x]" % (data.encode('hex'), len(data)))
