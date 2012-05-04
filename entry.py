@@ -7,8 +7,10 @@ import struct
 import time
 from epycs.rc4 import RC4
 import d41
+import rsa
+import keys
+import hashlib
 from aes import crypt as aes_crypt
-from scrc import calculate as calc_scrc
 from scrc import calculate32 as calc_scrc32
 
 class ChatSession(object):
@@ -63,12 +65,28 @@ class ChatSession(object):
             raise IOError("Connection stalled")
 
         packet = d41.Packet(raw=response)
+        self.extract_key(packet)
 
-        for idx, (typ, val) in packet.blobs.items():
-            print "INDEX %x, typ %x value %r" % (idx, typ, val)
+        typ, remote_nonce = packet.blobs.get(9, (None,None))
+        nonce_hash = hashlib.sha1(struct.pack('<Q', remote_nonce))
+        print nonce_hash.hexdigest()
 
-        typ, val = packet.blobs.get(1, (None,None))
 
+    def extract_key(self, packet):
+        typ, val = packet.blobs.get(5, (None,None))
+
+        skype_pub = rsa.transform.bytes2int(keys.SKYPE_PUB)
+        user = rsa.transform.bytes2int(val[8:0x108])
+
+        cred = pow(user, 65537, skype_pub)
+        cred = rsa.transform.int2bytes(cred)
+        key_start = cred.find('\x80\x01')
+        if key_start < 0:
+            raise ValueError('cant find key in creds')
+
+        key_start += 2
+        key = cred[key_start:key_start+0x80]
+        logging.info("extraced user key %s" % key.encode('hex'))
 
 
     def send(self, data, rc4=True, aes=True):
