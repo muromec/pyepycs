@@ -70,9 +70,45 @@ class ChatSession(object):
         packet = d41.Packet(raw=response)
         self.extract_key(packet)
 
-        typ, remote_nonce = packet.blobs.get(9, (None,None))
-        nonce_hash = hashlib.sha1(struct.pack('<Q', remote_nonce))
-        print nonce_hash.hexdigest()
+        typ, challenge = packet.blobs.get(0xa)
+        for idx, (typ, val) in packet.blobs.iteritems():
+            if typ == 4:
+                print hex(idx), val.encode('hex')
+        typ, self.remote_nonce = packet.blobs.get(9, (None,None))
+
+    @property
+    def challenge_response(self):
+        nonce = struct.pack('<Q', self.remote_nonce)
+        nonce += '\x01'
+
+        nonce_hash = hashlib.sha1(nonce)
+        data = unsp.CHALLENGE[:0x62]
+        data += nonce
+        data += nonce_hash.digest()
+        data += '\xBC'
+
+        assert len(data) == 0x80, len(data)
+        # TODO: crypt with rsa same way as in cred188
+
+        return data
+
+    @property
+    def local_nonce(self):
+        if not hasattr(self, '_local_nonce'):
+            data = rsa.randnum.read_random_bits(0x80 * 8)
+            self._local_nonce = '\x01' + data[1:]
+
+        # TODO: crypt with rsa
+
+        return self._local_nonce
+
+    @property
+    def aes_key(self):
+        data = '\x00\x00\x00\x00' + self.local_nonce
+        assert len(data) == 0x84
+
+        return hashlib.sha1(data).digest()[:0x10]
+
 
     def send_nonce(self,):
 
@@ -82,13 +118,17 @@ class ChatSession(object):
             2: 0x5F359B29,
             5: self.cred_188.raw,
             0xD: 2,
-            0xA: self.channelge_response,
+            0xA: self.challenge_response,
             0x19: 1,
             6: self.local_nonce,
-            0x11: self.local_uic,
-            0x14: None,
+            0x11: unsp.LOCAL_UIC,
+            0x14: 0,
         })
         self.send(out.raw)
+
+        data = self.recv()
+        if not data:
+            raise IOError('Empty response in nonce')
 
 
 
@@ -151,6 +191,9 @@ class ChatSession(object):
                 data += chunk
             except socket.timeout:
                 break
+
+        if not data:
+            return
 
         if rc4:
             data = self.remote_rc4.crypt(data)
