@@ -25,6 +25,7 @@ class ChatSession(object):
         self.addr = addr
         self.local_rc4 = RC4(self.rnd)
         self.cred_188 = cred_188
+        self.aes_seq = 0
 
     def connect(self):
         self.con = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -88,9 +89,8 @@ class ChatSession(object):
         data += '\xBC'
 
         assert len(data) == 0x80, len(data)
-        # TODO: crypt with rsa same way as in cred188
 
-        return data
+        return self.cred_188.crypt(data)
 
     @property
     def local_nonce(self):
@@ -98,9 +98,7 @@ class ChatSession(object):
             data = rsa.randnum.read_random_bits(0x80 * 8)
             self._local_nonce = '\x01' + data[1:]
 
-        # TODO: crypt with rsa
-
-        return self._local_nonce
+        return self.cred_188.crypt(self._local_nonce)
 
     @property
     def aes_key(self):
@@ -153,7 +151,8 @@ class ChatSession(object):
         logging.info("raw %s [%x]" % (data.encode('hex'), len(data)))
 
         if aes:
-            data = aes_crypt(data)
+            data = aes_crypt(data, self.aes_seq)
+            self.aes_seq += 1
             data += struct.pack('<H', calc_scrc32(data))
             logging.info("encrypted %s [%x]" % (data.encode('hex'), len(data)))
 

@@ -33,7 +33,10 @@ class Cred(object):
         ret += hashlib.sha1(digest).digest()
         ret += '\xbc'
 
-        iret = rsa.transform.bytes2int(ret)
+        return self.crypt(ret)
+
+    def crypt(self, data):
+        iret = rsa.transform.bytes2int(data)
 
         signed = pow(iret, self.user_priv, self.user_pub)
         assert len(rsa.transform.int2bytes(signed)) == 0x80
