@@ -1,4 +1,5 @@
 import struct
+from scrc import calculate as calc_scrc
 
 def encode_to_7bit(word):
     ret = [0]
@@ -34,7 +35,7 @@ def unpack_41_command(data):
     cmd = ord(data[n+1])
     cmd, fmt, count = struct.unpack_from('<3B', data, n)
     if fmt != 0x41:
-        raise ValueError('not 0x41 encoded')
+        raise ValueError('not 0x41 encoded but %x' % fmt)
 
     ret = {}
 
@@ -48,8 +49,8 @@ def unpack_41_command(data):
 
             ret[idx] = (typ, val)
 
-        elif typ == 1: # two 64 bit nums
-            val = struct.unpack_from('!2L', data, blob_pos)
+        elif typ == 1: # 64 bit num
+            val = struct.unpack_from('!Q', data, blob_pos)
             blob_pos += 8
             ret[idx] = (typ, val)
 
@@ -66,7 +67,19 @@ def unpack_41_command(data):
     return ret
 
 
-def format_blob(typ, idx, data):
+TYPES = {
+        int: 0,
+        long: 1,
+        unicode: 3,
+        str: 4,
+        tuple: 1, # XXX packed 64 int
+}
+
+def format_blob(idx, data):
+    # guessing type
+    typ = TYPES.get(type(data))
+    assert typ is not None
+
     ret = [0xFF & typ, 0XFF & idx]
     if data is None:
         fmt = '<3B' 
@@ -94,7 +107,37 @@ def format_blob(typ, idx, data):
 
         ret.append(data)
         return struct.pack(fmt, *ret)
+    elif typ == 1: # typ long
+        fmt = '<2B'
+        fmt2 = '!Q'
+        return struct.pack(fmt, *ret) + struct.pack(fmt2, data)
+
     elif isinstance(data, tuple) and len(data) == 2:
         fmt = '<2B'
         fmt2 = '!2L'
         return struct.pack(fmt, *ret) + struct.pack(fmt2, *data)
+
+class Packet(object):
+    def __init__(self, sid, cmd, blobs=(), raw=None):
+        if raw is not None:
+            self.decode(raw)
+        elif sid and cmd:
+            self.encode(sid, cmd, blobs)
+
+    def decode(self, raw):
+        pass
+
+    def encode(self, sid, cmd, blobs):
+        data = format_41_command(len(blobs), sid, cmd)
+
+        assert hasattr(blobs, 'next') or hasattr(blobs, 'iteritems'), "Blobs should support iteration!"
+        if isinstance(blobs, dict):
+            kv = blobs.iteritems()
+        else:
+            kv = blobs
+
+        for idx, value in kv:
+            data += format_blob(idx, value)
+
+        data += calc_scrc(data) # not sure, maby move to aes coder
+        self.raw = data

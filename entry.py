@@ -4,6 +4,7 @@ import logging
 import random
 import socket
 import struct
+import time
 from epycs.rc4 import RC4
 import d41
 from aes import crypt as aes_crypt
@@ -16,6 +17,7 @@ class ChatSession(object):
     def __init__(self, addr):
         self.rnd = random.randint(0, 0x10000)
         self.seq = random.randint(0, 0x10000)
+        self.local_sid = int(time.time()) & 0x3FFF
         self.addr = addr
         self.local_rc4 = RC4(self.rnd)
 
@@ -44,22 +46,17 @@ class ChatSession(object):
 
     def check_name(self, name):
         # send 6 blobs in single command
-        # TODO: move package assemble into d41
+        nonce = long(random.randint(0,2**64))
 
-        data = d41.format_41_command(6, 0x40DD, 0x43)
+        out = d41.Packet(0x40DD, 0x43, {
+            3: self.local_sid,
+            0: unicode(name),
+            0x1B: 1,
+            1: self.INIT_UNK,
+            9: nonce,
+        })
 
-        # here are blobs
-        data += d41.format_blob(0, 3, 0x259F) # local session id
-        data += d41.format_blob(4, 1, self.INIT_UNK)
-        data += d41.format_blob(1, 9, (0xF7BB5566, 0xDBDBCE66))
-        data += d41.format_blob(0, 0x1B, None) # flag
-        data += d41.format_blob(3, 0, unicode(name))
-        data += d41.format_blob(0, 0x18, 1) # flag
-        data += calc_scrc(data)
-
-        # TODO: add CRC
-
-        self.send(data)
+        self.send(out.raw)
 
         response = self.recv()
         if not response:
@@ -69,7 +66,18 @@ class ChatSession(object):
 
         ct, n = d41.decode_7bit(response[:10])
         clear = aes_crypt(response[5:])
-        print d41.unpack_41_command(clear)
+        print 'got len %d'% len(clear)
+        print clear.encode('hex')
+
+        print 'got packet typ 41:'
+        packet = d41.unpack_41_command(clear)
+
+        for idx, (typ, val) in packet.items():
+            print "INDEX %x, typ %x value %r" % (idx, typ, val)
+
+        typ, val = packet.get(1, (None,None))
+
+
 
     def send(self, data, rc4=True, aes=True):
         logging.info("raw %s [%x]" % (data.encode('hex'), len(data)))
@@ -102,11 +110,12 @@ class ChatSession(object):
 
     def recv(self):
         data = ''
+        self.con.settimeout(2)
 
         while True:
             try:
-                self.con.settimeout(0.3)
                 chunk = self.con.recv(4096)
+                self.con.settimeout(0.3)
                 if not chunk:
                     break
                 data += chunk
