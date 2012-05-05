@@ -106,7 +106,7 @@ class ChatSession(object):
         self.extract_aes_key(packet)
 
     def join(self, me, remote):
-        chatstring = u"#%s/$%s;4fea66013cdd%04d" % (
+        self.chatstring = u"#%s/$%s;4fea66013cdd%04d" % (
                 me,
                 remote,
                 random.randint(0,9999)
@@ -116,14 +116,14 @@ class ChatSession(object):
             3: 0,
             4: {
                 1: 0xD,
-                2: unicode(chatstring),
+                2: unicode(self.chatstring),
                 0x1c: 1,
                 0x1D: 1,
             },
             7: 5,
         })
         self.send(out.raw)
-        logging.info("joining char %s" % chatstring)
+        logging.info("joining char %s" % self.chatstring)
 
         out2 = d41.Packet(0x872F, 0x43, {
             0: 0x2a,
@@ -138,6 +138,36 @@ class ChatSession(object):
 
             packet = d41.Packet(raw=data)
             print packet, packet.blobs
+
+    def post_join(self):
+        cred = None
+        chat_names = ""
+        newblk = None
+
+        # ZOMG1111
+        out = d41.Packet(0xAA58, 0x6D, {
+            1: 0x55819F87,
+            3: 1,
+            4: {
+                1: 0x24,
+                2: unicode(self.chatstring),
+                0x1b: 7,
+                0x12: chat_names,
+                0x1e: 0,
+                0x19: [
+                    (0, [
+                        (0,8),
+                        (1,1),
+                        (2, 0xE9C261A9),
+                        (3, newblk),
+                        (4, cred),
+                    ]),
+                    (6, 1),
+                    (7, 0x08DD791A),
+                    (9, 0x013AF2C7),
+                ],
+            },
+        })
 
 
     def extract_aes_key(self, packet):
