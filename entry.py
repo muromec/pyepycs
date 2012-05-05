@@ -14,6 +14,7 @@ from cred import Cred
 from aes import crypt as aes_crypt
 from scrc import calculate32 as calc_scrc32
 import unsp
+from utils import h
 
 class ChatSession(object):
     INIT_PACKED = "\x00\x01\x00\x00\x00\x01\x00\x00\x00\x03"
@@ -110,10 +111,26 @@ class ChatSession(object):
 
     @property
     def aes_key(self):
-        data = '\x00\x00\x00\x00' + self.local_nonce
+        if not hasattr(self, 'remote_aes_key'):
+            return
+
+        data = unsp.LOCAL_NONCE
+        data  = '\x01' + data[1:]
+        data = '\x00\x00\x00\x00' + data
         assert len(data) == 0x84
 
-        return hashlib.sha1(data).digest()[:0x10]
+        lpart = hashlib.sha1(data).digest()[:0x10]
+        lpart = struct.pack('>4I', *struct.unpack('<4I', lpart))
+        rpart = self.remote_aes_key
+        return lpart + rpart
+
+    @property
+    def aes_sid(self):
+        # XXX: look ugly
+        if not hasattr(self, 'remote_aes_key'):
+            return 0
+
+        return (self.local_sid << 16) | self.remote_sid
 
 
     def send_nonce(self,):
@@ -140,11 +157,10 @@ class ChatSession(object):
         self.extract_aes_key(packet)
 
     def join(self, me, remote):
-        random_str = u'4fea66013cdd0000'
-        chatstring = u"#%s/$%s;%s" % (
+        chatstring = u"#%s/$%s;4fea66013cdd%04d" % (
                 me,
                 remote,
-                random_str,
+                random.randint(0,9999)
         )
         out = d41.Packet(0x6406, 0x6D, {
             1: 0x55819F87,
@@ -158,6 +174,7 @@ class ChatSession(object):
             7: 5,
         })
         self.send(out.raw)
+        logging.info("joining char %s" % chatstring)
 
         out2 = d41.Packet(0x872F, 0x43, {
             0: 0x2a,
@@ -165,6 +182,13 @@ class ChatSession(object):
             2: 0,
         })
         self.send(out2.raw)
+
+        data = self.recv()
+        if not data:
+            raise IOError("Join failed")
+
+        logging.info("join packet accepted")
+        print data.encode('hex')
 
 
     def extract_aes_key(self, packet):
@@ -184,7 +208,10 @@ class ChatSession(object):
         data = '\x00\x00\x00\x00' + clear_remote_nonce
         assert len(data) == 0x84
 
-        self.remote_aes_key = hashlib.sha1(data).digest()[:0x10]
+        aes_key = hashlib.sha1(data).digest()[:0x10]
+
+        # swap endiannes
+        self.remote_aes_key = struct.pack('>4I', *struct.unpack('<4I', aes_key))
 
 
     def extract_key(self, packet):
@@ -209,7 +236,7 @@ class ChatSession(object):
         logging.info("raw %s [%x]" % (data.encode('hex'), len(data)))
 
         if aes:
-            data = aes_crypt(data, self.aes_seq)
+            data = aes_crypt(data, self.aes_seq, sid=self.aes_sid, key=self.aes_key)
             crc = calc_scrc32(data)
             data += struct.pack('<H', crc ^ self.aes_seq)
 
