@@ -291,7 +291,17 @@ class ChatSession(object):
             # oops, losing first 5 bytes
             ct, n = d41.decode_7bit(data[:5])
             # not sure is 5 is fixed offset due to 7bit size encoding
-            data = aes_crypt(data[5:], self.aes_seq_r)
+            # XXX: ... and it isn`t.
+            # TODO: detect from header, dont guess
+            if self.aes_sid:
+                skip = 4
+                sid = 0xFFFFFFFF ^ self.aes_sid
+            else:
+                skip = 5
+                sid = 0
+
+            data = aes_crypt(data[skip:], self.aes_seq_r, sid=sid, key=self.aes_key)
+
             self.aes_seq_r += 1
 
         return data
