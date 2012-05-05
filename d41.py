@@ -73,7 +73,28 @@ TYPES = {
         unicode: 3,
         str: 4,
         tuple: 1, # XXX packed 64 int
+        dict: 4,
+        list: 4,
 }
+
+
+def format_blobdict(blobs):
+    assert (
+            hasattr(blobs, 'next')
+            or isinstance(blobs, list)
+            or hasattr(blobs, 'iteritems')
+    ), "Blobs should support iteration!"
+
+    if isinstance(blobs, dict):
+        kv = blobs.iteritems()
+    else:
+        kv = blobs
+
+    data = ''
+    for idx, value in kv:
+        data += format_blob(idx, value)
+
+    return data
 
 def format_blob(idx, data):
     # guessing type
@@ -81,6 +102,9 @@ def format_blob(idx, data):
     assert typ is not None
 
     ret = [0xFF & typ, 0XFF & idx]
+    if isinstance(data, (dict, list)):
+        data = struct.pack('<2B', 0x41, len(data)) + format_blobdict(data)
+
     if data is None:
         fmt = '<3B' 
         ret.append(0)
@@ -132,20 +156,7 @@ class Packet(object):
 
     def encode(self, sid, cmd, blobs):
         data = format_41_command(len(blobs), sid, cmd)
-
-        assert (
-                hasattr(blobs, 'next')
-                or isinstance(blobs, list)
-                or hasattr(blobs, 'iteritems')
-        ), "Blobs should support iteration!"
-
-        if isinstance(blobs, dict):
-            kv = blobs.iteritems()
-        else:
-            kv = blobs
-
-        for idx, value in kv:
-            data += format_blob(idx, value)
+        data += format_blobdict(blobs)
 
         data += calc_scrc(data) # not sure, maby move to aes coder
         self.raw = data
