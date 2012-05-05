@@ -188,7 +188,8 @@ class ChatSession(object):
             raise IOError("Join failed")
 
         logging.info("join packet accepted")
-        print data.encode('hex')
+        packet = d41.Packet(raw=data)
+        print packet.blobs
 
 
     def extract_aes_key(self, packet):
