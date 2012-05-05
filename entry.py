@@ -45,7 +45,7 @@ class ChatSession(object):
 
         self.send(out.raw)
 
-        response = self.recv()
+        [response] = self.recv()
         if not response:
             raise IOError("Connection stalled")
 
@@ -98,7 +98,7 @@ class ChatSession(object):
         })
         self.send(out.raw)
 
-        data = self.recv()
+        [data] = self.recv()
         if not data:
             raise IOError('Empty response in nonce')
 
@@ -132,13 +132,12 @@ class ChatSession(object):
         })
         self.send(out2.raw)
 
-        data = self.recv()
-        if not data:
-            raise IOError("Join failed")
+        for data in self.recv():
+            if not data:
+                raise IOError("Join failed")
 
-        logging.info("join packet accepted")
-        packet = d41.Packet(raw=data)
-        print packet.blobs
+            packet = d41.Packet(raw=data)
+            print packet, packet.blobs
 
 
     def extract_aes_key(self, packet):

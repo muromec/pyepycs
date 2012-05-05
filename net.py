@@ -125,21 +125,24 @@ class TcpLink(object):
             data = self.remote_rc4.crypt(data)
 
         if aes:
-            # TODO: check size and crc from header
-            # oops, losing first 5 bytes
-            ct, n = d41.decode_7bit(data[:5])
-            # not sure is 5 is fixed offset due to 7bit size encoding
-            # XXX: ... and it isn`t.
-            # TODO: detect from header, dont guess
-            if self.aes_sid:
-                skip = 4
-                sid = 0xFFFFFFFF ^ self.aes_sid
-            else:
-                skip = 5
-                sid = 0
+            return self.deseq(data)
+        
+        return data
 
-            data = aes_crypt(data[skip:], self.aes_seq_r, sid=sid, key=self.aes_key)
+    def deseq(self, data):
+        while len(data) > 2:
+            ct, n = d41.decode_7bit(data[:5])
+            if data[n] != '\x05':
+                raise IOError("Protocol mismatch, header %s" % data[:5].encode('hex'))
+
+            [crc] = struct.unpack_from('>H', data, n+1)
+            skip = n + 3
+            sid = 0xFFFFFFFF ^ self.aes_sid if self.aes_sid else 0
+
+            yield aes_crypt(data[skip:], self.aes_seq_r, sid=sid, key=self.aes_key)
 
             self.aes_seq_r += 1
 
-        return data
+            ct /= 2
+            ct += 1
+            data = data[ct:]
