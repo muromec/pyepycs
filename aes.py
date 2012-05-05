@@ -1,8 +1,12 @@
 import struct
 from epycs.aes import AES
 
-def crypt(data, blk_seq=0, sid=0):
-    aes = AES('\x00'*0x20)
+def crypt(data, blk_seq=0, sid=0, key=None):
+    if key is None:
+        key = '\x00'*0x20
+
+    assert len(key) == 0x20
+    aes = AES(key)
     sz = len(data)
 
     seq = blk_seq * 0x10000
@@ -10,7 +14,7 @@ def crypt(data, blk_seq=0, sid=0):
     ret = []
     pos = 0
     while sz > (pos + 16):
-        pt_data = struct.pack('<4L', sid, 0, sid, seq)
+        pt_data = struct.pack('<4L', sid, sid, 0, seq)
 
         crypted = aes.crypt(pt_data)
 
@@ -27,7 +31,7 @@ def crypt(data, blk_seq=0, sid=0):
     str_ret = struct.pack('<%dL' % len(ret), *ret)
 
     if sz > pos:
-        pt_data = struct.pack('<4L', sid, 0, sid, seq)
+        pt_data = struct.pack('<4L', sid, sid, 0, seq)
         crypted = aes.crypt(pt_data)
         ct = struct.unpack('!16B', crypted)
         pt = struct.unpack('<%dB' % (sz-pos), data[pos:])
