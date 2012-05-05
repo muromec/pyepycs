@@ -160,3 +160,6 @@ class Packet(object):
 
         data += calc_scrc(data) # not sure, maby move to aes coder
         self.raw = data
+
+    def __repr__(self):
+        return '<Pakcet 0x%x sid 0x%04x>' % (self.cmd, self.sid)
