@@ -106,6 +106,8 @@ class ChatSession(object):
         self.extract_aes_key(packet)
 
     def join(self, me, remote):
+        self.remote_name = remote
+        self.chat_names = unicode.join(u" ", [remote, me])
         self.chatstring = u"#%s/$%s;4fea66013cdd%04d" % (
                 me,
                 remote,
@@ -133,16 +135,37 @@ class ChatSession(object):
         self.send(out2.raw)
 
         for data in self.recv():
-            if not data:
-                raise IOError("Join failed")
-
             packet = d41.Packet(raw=data)
-            print packet, packet.blobs
+            logging.info("got cmd %02x" % packet.cmd)
+
+            if packet.cmd == 0x6d:
+                reply = d41.Packet(packet.sid, 0x47, [])
+                self.send(reply.raw)
+
+        self.post_join()
 
     def post_join(self):
-        cred = None
-        chat_names = ""
-        newblk = None
+
+        params = d41.format_blobdict([
+            (0, 1),
+            (3, self.INIT_UNK),
+            (5, 0x49D198E2),
+            (6, 0x013AF2C7),
+            (7, 0x3D98FFD0),
+            (1, unicode(self.remote_name)),
+            (0xa, 0x08DD791A),
+            (0xb, 1),
+        ], header=True)
+
+        #  blob = hash(cred + chatid) + chatid + d41_param
+        blob = hashlib.sha1(
+                self.cred_188.cred +
+                self.chatstring.encode('utf8')
+        ).digest()
+        blob += self.chatstring.encode('utf8')
+        blob += params
+
+        cblob = self.cred_188.crypt_split(blob)
 
         # ZOMG1111
         out = d41.Packet(0xAA58, 0x6D, {
@@ -152,15 +175,15 @@ class ChatSession(object):
                 1: 0x24,
                 2: unicode(self.chatstring),
                 0x1b: 7,
-                0x12: chat_names,
+                0x12: self.chat_names,
                 0x1e: 0,
                 0x19: [
                     (0, [
                         (0,8),
                         (1,1),
                         (2, 0xE9C261A9),
-                        (3, newblk),
-                        (4, cred),
+                        (3, cblob),
+                        (4, self.cred_188.cred),
                     ]),
                     (6, 1),
                     (7, 0x08DD791A),
@@ -168,6 +191,13 @@ class ChatSession(object):
                 ],
             },
         })
+        self.send(out.raw)
+        for data in self.recv():
+            packet = d41.Packet(raw=data)
+            if packet.cmd == 0x47 and packet.sid == out.sid:
+                logging.info("got ack!")
+            else:
+                logging.info("got cmd %02x" % packet.cmd)
 
 
     def extract_aes_key(self, packet):
