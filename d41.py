@@ -75,13 +75,14 @@ TYPES = {
         tuple: 1, # XXX packed 64 int
         dict: 4,
         list: 4,
+        tuple: 5,
 }
 
 
-def format_blobdict(blobs):
+def format_blobdict(blobs, header=False):
     assert (
             hasattr(blobs, 'next')
-            or isinstance(blobs, list)
+            or isinstance(blobs, (list, tuple))
             or hasattr(blobs, 'iteritems')
     ), "Blobs should support iteration!"
 
@@ -91,6 +92,9 @@ def format_blobdict(blobs):
         kv = blobs
 
     data = ''
+    if header:
+        data += struct.pack('<2B', 0x41, len(blobs))
+
     for idx, value in kv:
         data += format_blob(idx, value)
 
@@ -99,11 +103,11 @@ def format_blobdict(blobs):
 def format_blob(idx, data):
     # guessing type
     typ = TYPES.get(type(data))
-    assert typ is not None
+    assert typ is not None, idx
 
     ret = [0xFF & typ, 0XFF & idx]
-    if isinstance(data, (dict, list)):
-        data = struct.pack('<2B', 0x41, len(data)) + format_blobdict(data)
+    if isinstance(data, (dict, list, tuple)):
+        data = format_blobdict(data, header=True)
 
     if data is None:
         fmt = '<3B' 
