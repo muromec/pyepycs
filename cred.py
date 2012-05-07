@@ -42,6 +42,24 @@ class Cred(object):
         assert len(rsa.transform.int2bytes(signed)) == 0x80
         return rsa.transform.int2bytes(signed)
 
+    def crypt_split(self, data):
+        # we spliting this blob to fit into 0x80 signed packet
+        # and appending data past 0x80 unsigned
+        # RSA(<6A> blob_split[0] hash(blob) <bc>) blob_split[1]
+
+        ret = '\x6a'
+        ret += data[:0x6a]
+        ret += hashlib.sha1(data).digest()
+        ret += '\xbc'
+        assert len(ret) == 0x80
+
+        ret = self.crypt(ret)
+        assert len(ret) == 0x80
+
+        ret += data[0x6a:]
+
+        return ret
+
     @property
     def user_priv(self):
         ret = self.config['user_priv'].replace(' ', '')
