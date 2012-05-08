@@ -37,34 +37,40 @@ def unpack_41_command(data):
     if fmt != 0x41:
         raise ValueError('not 0x41 encoded but %x' % fmt)
 
-    ret = {}
+    return (session, cmd, count), n +3
 
-    blob_pos = n+3
-    for x in range(count):
-        typ, idx = struct.unpack_from('<2B', data, blob_pos)
-        blob_pos += 2
-        if typ == 0: # int
-            val,inc = decode_7bit(data[blob_pos:])
-            blob_pos += inc
+def unpack_41_blob(data, blob_pos=0):
+    typ, idx = struct.unpack_from('<2B', data, blob_pos)
+    blob_pos += 2
+    if typ == 0: # int
+        val,inc = decode_7bit(data[blob_pos:])
+        blob_pos += inc
 
-            ret[idx] = (typ, val)
+    elif typ == 1: # 64 bit num
+        [val] = struct.unpack_from('<Q', data, blob_pos)
+        blob_pos += 8
 
-        elif typ == 1: # 64 bit num
-            [val] = struct.unpack_from('<Q', data, blob_pos)
-            blob_pos += 8
-            ret[idx] = (typ, val)
+    else:
+        assert typ == 4, "Unknow typ %d" % typ
+        sz, inc = decode_7bit(data[blob_pos:])
+        blob_pos += inc
+
+        if sz and data[blob_pos] == '\x41':
+            fmt, count = struct.unpack_from('<2B', data, blob_pos)
+            assert fmt == 0x41
+            assert count < 0x100
+
+            blob_pos += 2
+            val = {}
+            for x in range(count):
+                _idx, _val, blob_pos  = unpack_41_blob(data, blob_pos)
+                val[_idx] = _val
 
         else:
-            assert typ == 4, "Unknow typ %d" % typ
-            sz, inc = decode_7bit(data[blob_pos:])
-            blob_pos += inc
             val = data[blob_pos:blob_pos+sz]
             blob_pos += sz
-            ret[idx] = (typ, val)
 
-
-    # TODO: last 4 bytes CRC
-    return session, cmd, ret
+    return idx, val, blob_pos
 
 
 TYPES = {
@@ -151,12 +157,23 @@ class Packet(object):
             self.raw = raw
             self.decode(raw)
         elif sid and cmd:
+            #import random
+            #sid = random.randint(1,2**15)
             self.sid, self.cmd, self.blobs = sid, cmd, blobs
             self.encode(sid, cmd, blobs)
 
     def decode(self, raw):
         # TODO: split into unpack_command and unpack_blobs
-        self.sid, self.cmd, self.blobs = unpack_41_command(raw)
+        data, off = unpack_41_command(raw)
+        self.sid, self.cmd, count = data
+
+        blobs = {}
+        for x in range(count):
+            idx, val, off = unpack_41_blob(raw, off)
+            blobs[idx] = val
+
+        self.blobs = blobs
+        assert len(blobs) == count
 
     def encode(self, sid, cmd, blobs):
         data = format_41_command(len(blobs), sid, cmd)

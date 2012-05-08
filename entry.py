@@ -52,9 +52,10 @@ class ChatSession(object):
         packet = d41.Packet(raw=response)
         self.extract_remote_pub(packet)
 
-        typ, challenge = packet.blobs.get(0xa)
-        typ, self.remote_nonce = packet.blobs.get(9, (None,None))
-        typ, self.link.remote_sid = packet.blobs.get(3)
+        challenge = packet.blobs.get(0xa)
+        self.remote_nonce = packet.blobs.get(9)
+        self.link.remote_sid = packet.blobs.get(3)
+        print self.remote_nonce, self.link.remote_sid
 
     @property
     def challenge_response(self):
@@ -140,6 +141,7 @@ class ChatSession(object):
 
             if packet.cmd == 0x6d:
                 reply = d41.Packet(packet.sid, 0x47, [])
+                logging.info("reply to %r %r" %( packet, packet.blobs))
                 self.send(reply.raw)
 
         self.post_join()
@@ -247,14 +249,14 @@ class ChatSession(object):
 
 
     def extract_aes_key(self, packet):
-        typ, remote_nonce = packet.blobs.get(6)
+        remote_nonce = packet.blobs.get(6)
         rnonce = self.cred_188.crypt(remote_nonce)
 
         self.link.aes_enable(self._lnonce, rnonce, self.local_sid, self.link.remote_sid)
 
 
     def extract_remote_pub(self, packet):
-        typ, val = packet.blobs.get(5, (None,None))
+        val = packet.blobs.get(5)
 
         skype_pub = rsa.transform.bytes2int(keys.SKYPE_PUB)
         user = rsa.transform.bytes2int(val[8:0x108])
