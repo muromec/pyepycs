@@ -44,7 +44,7 @@ class TcpLink(object):
         [self.remote_iv] = struct.unpack('!L', response[:4])
         self.remote_rc4 = RC4(self.remote_iv)
 
-        logging.info("remote RC4 IV: %x" % self.remote_iv)
+        logging.debug("remote RC4 IV: %x" % self.remote_iv)
  
         handshake_clear = self.remote_rc4.test(response[4:14])
 
@@ -54,7 +54,7 @@ class TcpLink(object):
 
         self.check_handshake_2(next_size)
 
-        logging.info('handshake passed with %r' % (self.addr,))
+        logging.debug('handshake passed with %r' % (self.addr,))
 
     def check_handshake(self, data):
         pass
@@ -71,7 +71,7 @@ class TcpLink(object):
         self.aes_key, self.aes_sid = key, sid
 
     def send(self, data, rc4=True, aes=True):
-        logging.info("raw %s [%x]" % (data.encode('hex'), len(data)))
+        logging.debug("raw %s [%x]" % (data.encode('hex'), len(data)))
 
         if aes:
             data = aes_crypt(data, self.aes_seq, sid=self.aes_sid, key=self.aes_key)
@@ -79,7 +79,7 @@ class TcpLink(object):
             data += struct.pack('<H', crc ^ self.aes_seq)
 
             self.aes_seq += 1
-            logging.info("encrypted %s [%x]" % (data.encode('hex'), len(data)))
+            logging.debug("encrypted %s [%x]" % (data.encode('hex'), len(data)))
 
 
         if aes and True: # first byte correction
@@ -94,14 +94,14 @@ class TcpLink(object):
             str_header += struct.pack('>H', crc ^ (self.remote_sid<<1))
             data = str_header + data
 
-            logging.info("with header %s [%x]" % (data.encode('hex'), len(data)))
+            logging.debug("with header %s [%x]" % (data.encode('hex'), len(data)))
 
         if rc4:
             data = self.local_rc4.crypt(data)
-            logging.info("rc4 %s [%x]" % (data.encode('hex'), len(data)))
+            logging.debug("rc4 %s [%x]" % (data.encode('hex'), len(data)))
 
 
-        logging.info("send %s [%x]" % (data.encode('hex'), len(data)))
+        logging.debug("send %s [%x]" % (data.encode('hex'), len(data)))
         self.con.sendall(data)
 
     def recv(self, rc4=True, aes=True):
