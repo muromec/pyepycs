@@ -199,6 +199,52 @@ class ChatSession(object):
             else:
                 logging.info("got cmd %02x" % packet.cmd)
 
+        params = d41.format_blobdict([
+            (0, 4),
+            (3, self.INIT_UNK),
+            (5, 0x49D198E2), 
+            (6, 0x013AF2C7),
+            (7, 0x3D98FFD0),
+            (0x0e, u""),
+            (0x0F, 0,),
+            (0x0a, 0x4208B88D),
+
+        ])
+
+        blob = hashlib.sha1(
+                self.cred_188.cred +
+                self.chatstring.encode('utf8')
+        ).digest()
+        blob += self.chatstring.encode('utf8')
+        blob += params
+
+        cblob = self.cred_188.crypt_split(blob)
+        out = d41.Packet(0x13D3, 0x6D, {
+            1: 0x55819F87,
+            3: 2,
+            4: {
+                1: 0x2a,
+                0x18: (
+                    (2, (
+                        (0, 9),
+                        (1, 1),
+                        (2, 0xE9C261A9),
+                        (3, cblob),
+                        (4, self.cred_188.cred),
+                    )),
+                    (6, 1),
+                    (7, 0x4208B88D),
+                    (9, 0x013AF2C7), 
+                ),
+            }
+        })
+
+        self.send(out.raw)
+
+        [data] = self.recv()
+        packet = d41.Packet(raw=data)
+        print packet
+
 
     def extract_aes_key(self, packet):
         typ, remote_nonce = packet.blobs.get(6)
